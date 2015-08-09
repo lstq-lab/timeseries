@@ -29,8 +29,31 @@ public class DateValueIterator<T> implements Iterator<DateValue<T>> {
     private void forwardToStartDate() {
 
         do {
-            next();
+            forwardToNextNotNull();
         } while(nextValue != null && nextValue.getOffset() < startDate);
+
+    }
+
+    private void forwardToNextNotNull() {
+
+        nextValue = null;
+
+        if (currentSliceIterator == null) return;
+
+        do {
+            if (currentSliceIterator.hasNext()) {
+                nextValue = currentSliceIterator.next();
+                if (nextValue != null && nextValue.getValue() != null) {
+                    break;
+                }
+            } else {
+                loadNextSlice();
+                if (currentSliceIterator == null) {
+                    nextValue = null;
+                    break;
+                }
+            }
+        } while(currentSliceIterator != null);
 
     }
 
@@ -54,28 +77,9 @@ public class DateValueIterator<T> implements Iterator<DateValue<T>> {
     public DateValue<T> next() {
         OffsetValue<T> toReturn = nextValue;
 
-        if (currentSliceIterator != null)
-        {
-            if (currentSliceIterator.hasNext())
-            {
-                nextValue = currentSliceIterator.next();
-            }
-            else
-            {
-                loadNextSlice();
-                if (currentSliceIterator != null) {
-                    nextValue = currentSliceIterator.next();
-                }
-                else
-                {
-                    nextValue = null;
-                }
-            }
-        }
+        forwardToNextNotNull();
 
-        if (toReturn == null) return null;
-        else
-            return new DateValue<>(tsStartDate + toReturn.getOffset(), toReturn.getValue());
+        return new DateValue<>(tsStartDate + toReturn.getOffset(), toReturn.getValue());
     }
 
     @Override public void remove()

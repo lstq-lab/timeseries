@@ -57,6 +57,8 @@ public class SeriesSlice<T> implements Comparable<SeriesSlice<T>> {
         if (index >= maxSize)
         {
             throw new RuntimeException("Overflow detected. This data belongs to another slice");
+        } else if (index < 0) {
+            throw new RuntimeException("Timeseries configuration problem. The date is before its begining.");
         }
         return index;
     }
@@ -81,11 +83,6 @@ public class SeriesSlice<T> implements Comparable<SeriesSlice<T>> {
     public SliceIterator iterator()
     {
         return new SliceIterator();
-    }
-
-    T[] getRawSliceData()
-    {
-        return slice;
     }
 
     public T[] getRawSliceDataCopy()
