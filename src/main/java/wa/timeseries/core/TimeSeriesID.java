@@ -13,9 +13,6 @@ public class TimeSeriesID implements Comparable<TimeSeriesID> {
     public TimeSeriesID(String family, String id) {
         this.family = family;
         this.id = id;
-        if (id.contains("-")) {
-            throw new RuntimeException("Timeseries id can't contains the character '-'");
-        }
         if (family.contains("-")) {
             throw new RuntimeException("Timeseries family can't contains the character '-'");
         }

@@ -5,6 +5,8 @@ import wa.timeseries.core.persistence.TimeSeriesPersistenceHandler;
 
 import java.util.*;
 
+import static java.lang.Math.toIntExact;
+
 public class TimeSeriesHandler<T> {
 
     private TimeSeriesConfiguration configuration;
@@ -61,7 +63,7 @@ public class TimeSeriesHandler<T> {
 
         if (timeSeries.getLastValue() != newer) {
             timeSeries.update(newer);
-            persistenceHandler.persist(timeSeries);
+            persist(timeSeries);
         }
     }
 
@@ -70,20 +72,27 @@ public class TimeSeriesHandler<T> {
         TimeSeries timeSeries = persistenceHandler.get(tsId);
 
         if (timeSeries == null) {
-            timeSeries = new TimeSeries(tsId, null);
+            timeSeries = createNewTimeSeries(tsId);
         }
 
-        DateValue<T> newer = timeSeries.getLastValue();
+        DateValue<T> lastValue = timeSeries.getLastValue();
 
 
-        final SeriesSlice<T> slice = doAddValue(tsId, date, value, Collections
-                .<Long, SeriesSlice<T>>emptyMap());
+        final SeriesSlice<T> slice = doAddValue(tsId, date, value, new HashMap<Long,SeriesSlice<T>>());
         persist(tsId, slice);
 
-        if (newer == null || newer.getDate() < date) {
+        if (lastValue == null || lastValue.getDate() < date) {
             timeSeries.update(new DateValue<>(date, value));
-            persistenceHandler.persist(timeSeries);
+            persist(timeSeries);
         }
+    }
+
+    void persist(TimeSeries timeSeries) {
+        persistenceHandler.persist(timeSeries);
+    }
+
+    TimeSeries createNewTimeSeries(TimeSeriesID tsId) {
+        return persistenceHandler.createNewTimeSeries(tsId);
     }
 
     /**
@@ -98,12 +107,13 @@ public class TimeSeriesHandler<T> {
     }
 
     public Optional<TimeSeries<T>> get(TimeSeriesID tsid) {
-        return Optional.<TimeSeries<T>>fromNullable(persistenceHandler.get(tsid));
+        return Optional.<TimeSeries<T>>fromNullable(
+                persistenceHandler.get(tsid));
     }
 
     public Optional<T> get(TimeSeriesID tsId, long date)
     {
-        final long offset = date - configuration.getStartDate();
+        final long offset = getAbsoluteOffset(date);
         final long sliceSeq = getSliceIndex(offset);
 
         final Optional<SeriesSlice<T>> sliceOptional = fetchSlice(tsId,
@@ -120,12 +130,16 @@ public class TimeSeriesHandler<T> {
         return Optional.fromNullable(value);
     }
 
+    long getAbsoluteOffset(long date) {
+        return date - configuration.getStartDate();
+    }
+
     public Iterator<DateValue<T>> get(TimeSeriesID tsId, long qStartDate, long qEndDate)
     {
-        final long startOffset = qStartDate - configuration.getStartDate();
+        final long startOffset = getAbsoluteOffset(qStartDate);
         final long startSliceSeq = getSliceIndex(startOffset);
 
-        final long endOffset = qEndDate - configuration.getStartDate();
+        final long endOffset = getAbsoluteOffset(qEndDate);
         final long endSliceSeq = getSliceIndex(endOffset);
 
         Iterator<SeriesSlice<T>> sliceIterator = fetchSlices(tsId,
@@ -134,26 +148,18 @@ public class TimeSeriesHandler<T> {
         return new DateValueIterator(sliceIterator, configuration.getStartDate(), qStartDate, qEndDate);
     }
 
-    private SeriesSlice<T> doAddValue(TimeSeriesID tsId, long date, T value, Map<Long, SeriesSlice<T>> sliceTransactionCache) {
-        final long offset = date - configuration.getStartDate();
+    SeriesSlice<T> doAddValue(TimeSeriesID tsId, long date, T value, Map<Long, SeriesSlice<T>> sliceTransactionCache) {
+        final long offset = getAbsoluteOffset(date);
         final long sliceSeq = getSliceIndex(offset);
 
-        Optional<SeriesSlice<T>> sliceOptional =
-                Optional.fromNullable(sliceTransactionCache.get(sliceSeq));
+        final SeriesSlice<T> sliceOnTransaction = sliceTransactionCache.get(sliceSeq);
+        SeriesSlice<T> slice;
 
-        if (!sliceOptional.isPresent()) {
-            sliceOptional = fetchSlice(tsId, sliceSeq);
-        }
-
-        final SeriesSlice<T> slice;
-
-        if (!sliceOptional.isPresent())
-        {
-            slice = new SeriesSlice<>(sliceSeq, configuration.getSliceSize(), configuration.getMaxResolution());
-        }
-        else
-        {
-            slice = sliceOptional.get();
+        if (sliceOnTransaction != null) {
+            slice = sliceOnTransaction;
+        } else {
+            slice = fetchOrCreateSeriesSlice(tsId, sliceSeq);
+            sliceTransactionCache.put(sliceSeq, slice);
         }
 
         slice.add(getOffsetInsideSlice(offset, sliceSeq), value);
@@ -161,24 +167,45 @@ public class TimeSeriesHandler<T> {
         return slice;
     }
 
-    private int getOffsetInsideSlice(long offset, long sliceSeq)
+    SeriesSlice<T> fetchOrCreateSeriesSlice(TimeSeriesID tsId, long sliceSeq) {
+        final Optional<SeriesSlice<T>> sliceOptional = fetchSlice(tsId,
+                sliceSeq);
+        if (!sliceOptional.isPresent())
+        {
+            return persistenceHandler.newSlice(sliceSeq, configuration.getSliceSize(), configuration.getMaxResolution());
+        }
+        else
+        {
+            return sliceOptional.get();
+        }
+    }
+
+    int getOffsetInsideSlice(long offset, long sliceSeq)
     {
         long sliceOffset0 = sliceSeq * configuration.getSliceSize() * configuration.getMaxResolution();
-        int o = (int)(offset - sliceOffset0);
+        int o = toIntExact(offset - sliceOffset0);
         if (o < 0) {
             throw new RuntimeException("Something is wrong.");
         }
-        return (int)(offset - sliceOffset0);
+        return o;
     }
 
-    private long getSliceIndex(long offset)
+
+    public long dateOfOffsetSlice(long slice, int offsetInsideSlice) {
+        return getSliceFirstDate(slice) + offsetInsideSlice * configuration.getMaxResolution();
+    }
+
+    public long getSliceFirstDate(long slice) {
+        return slice * configuration.getSliceSize() * configuration.getMaxResolution();
+    }
+
+    long getSliceIndex(long offset)
     {
-        long index = (long)Math.floor((double)offset / (double)(
-                configuration.getMaxResolution() * configuration.getSliceSize()));
+        long index = (long)Math.floor((double)offset / (double)configuration.getMaxResolution() / (double)configuration.getSliceSize());
         return index;
     }
 
-    private Optional<SeriesSlice<T>> fetchSlice(TimeSeriesID tsId, long seq)
+    Optional<SeriesSlice<T>> fetchSlice(TimeSeriesID tsId, long seq)
     {
         Iterator<SeriesSlice<T>> slices = fetchSlices(tsId, seq, seq);
         if (!slices.hasNext())
@@ -195,8 +222,13 @@ public class TimeSeriesHandler<T> {
                 seqEnd);
     }
 
-    private void persist(TimeSeriesID tsId, SeriesSlice<T> slice)
+    void persist(TimeSeriesID tsId, SeriesSlice<T> slice)
     {
         persistenceHandler.persist(configuration, tsId, slice);
     }
+
+    public int getSliceSize() {
+        return configuration.getSliceSize();
+    }
+
 }

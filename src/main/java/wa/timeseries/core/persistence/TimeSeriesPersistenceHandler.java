@@ -1,12 +1,8 @@
 package wa.timeseries.core.persistence;
 
-import wa.timeseries.core.SeriesSlice;
-import wa.timeseries.core.TimeSeries;
-import wa.timeseries.core.TimeSeriesConfiguration;
-import wa.timeseries.core.TimeSeriesID;
+import wa.timeseries.core.*;
 
 import java.util.Iterator;
-import java.util.List;
 
 public interface TimeSeriesPersistenceHandler<T>
 {
@@ -20,5 +16,9 @@ public interface TimeSeriesPersistenceHandler<T>
 
     TimeSeries<T> get(TimeSeriesID tsId);
 
-    void persist(TimeSeries timeSeries);
+    void persist(TimeSeries<T> timeSeries);
+
+    SeriesSlice<T> newSlice(long sliceSeq, int sliceSize, int maxResolution);
+
+    TimeSeries<T> createNewTimeSeries(TimeSeriesID tsId);
 }

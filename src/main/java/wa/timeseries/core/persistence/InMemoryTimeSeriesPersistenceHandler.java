@@ -40,6 +40,17 @@ public class InMemoryTimeSeriesPersistenceHandler<T> implements TimeSeriesPersis
     }
 
     @Override
+    public SeriesSlice<T> newSlice(long sliceSeq, int sliceSize,
+            int maxResolution) {
+        return new SeriesSlice<T>(sliceSeq, sliceSize, maxResolution);
+    }
+
+    @Override
+    public TimeSeries<T> createNewTimeSeries(TimeSeriesID tsId) {
+        return new TimeSeries(tsId, null);
+    }
+
+    @Override
     public Iterator<SeriesSlice<T>> fetchSlices(TimeSeriesConfiguration configuration, TimeSeriesID tsId, long seqStart, long seqEnd) {
 
         TreeSet<SeriesSlice<T>> slices = getSliceSet(tsId);
@@ -63,6 +74,7 @@ public class InMemoryTimeSeriesPersistenceHandler<T> implements TimeSeriesPersis
         persistCount++;
         getSliceSet(tsId).add(slice);
     }
+
 
     private TreeSet<SeriesSlice<T>> getSliceSet(TimeSeriesID tsId)
     {

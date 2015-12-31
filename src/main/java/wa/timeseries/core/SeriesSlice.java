@@ -10,7 +10,6 @@ public class SeriesSlice<T> implements Comparable<SeriesSlice<T>> {
     private int maxSize;
     private int maxResolution;
 
-    //How to serialize in an list
     private T[] slice;
 
     SeriesSlice(){}
@@ -32,28 +31,28 @@ public class SeriesSlice<T> implements Comparable<SeriesSlice<T>> {
      * @param value The value
      * @return If there were a value for this offset before, return it.
      */
-    T add(int sliceOffset, T value) {
-        initializeSliceArray(value);
-
+    public T add(long sliceOffset, T value) {
         int i = getIndex(sliceOffset);
+        return addAtIndex(value, i);
+    }
 
-        T prevValue = slice[i];
-
-        slice[i] = value;
-
+    T addAtIndex(T value, int index) {
+        initializeSliceArray(value);
+        T prevValue = slice[index];
+        slice[index] = value;
         return prevValue;
     }
 
-    T get(int sliceOffset)
+    public T get(long sliceOffset)
     {
         if (slice == null) return null;
         int i = getIndex(sliceOffset);
         return slice[i];
     }
 
-    int getIndex(int sliceOffset)
+    int getIndex(long sliceOffset)
     {
-        int index = (int)Math.floor((float)sliceOffset / (float)maxResolution);
+        int index = (int)Math.floor((double)sliceOffset / (double)maxResolution);
         if (index >= maxSize)
         {
             throw new RuntimeException("Overflow detected. This data belongs to another slice");
@@ -89,6 +88,8 @@ public class SeriesSlice<T> implements Comparable<SeriesSlice<T>> {
     {
         return slice.clone();
     }
+
+    T[] getRawData() { return slice; }
 
     @Override
     public int compareTo(SeriesSlice<T> o) {
